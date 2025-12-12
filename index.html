@@ -1,1 +1,696 @@
-429: Too Many Requests
+<!DOCTYPE html> 
+<html lang="pt-BR">  
+<head>  
+<meta charset="utf-8" />  
+<meta name="viewport" content="width=device-width,initial-scale=1" />  
+<title>Jogo dos Quadrados — Versão Final com Apito</title>  
+<style>  
+  html,body{  
+    margin:0;padding:0;height:100%;overflow:hidden;background:#fff;font-family:Arial,Helvetica,sans-serif;user-select:none  
+  }  
+  canvas{  
+    display:block;background:#fff  
+  }  
+  #ui{  
+    position:fixed;left:12px;top:10px;z-index:20;font-weight:bold;color:#222;  
+  }  
+  #ui h2 {  
+    margin: 0 12px 0 0;  
+    display: inline;  
+    font-size: 1.6em;  
+    font-weight: bold;  
+    color: #222;  
+  }  
+  #message{  
+    position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);  
+    z-index:30;background:rgba(255,255,255,0.96);  
+    padding:18px 26px;border-radius:12px;font-size:22px;color:#b00;  
+    display:none;max-width:90vw;text-align:center;  
+  }  
+  #restart-btn{  
+    position:fixed;left:50%;top:calc(50% + 80px);  
+    transform:translateX(-50%);  
+    z-index:31;padding:16px 26px;border-radius:12px;  
+    border:0;background:#222;color:#fff;font-size:22px;  
+    cursor:pointer;display:none;  
+  }  
+  /* touch controls */  
+  #controls{  
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);  
+    width:180px;height:140px;z-index:25  
+  }  
+  .btn-arrow{  
+    position:absolute;width:60px;height:60px;border-radius:12px;  
+    background:#ddd;box-shadow:0 2px 6px rgba(0,0,0,.15);  
+    text-align:center;line-height:60px;font-size:30px;cursor:pointer  
+  }  
+  .btn-arrow:active{  
+    background:#bbb;  
+  }  
+  #btn-up{ left:60px; top:0 }  
+  #btn-left{ left:0; top:70px }  
+  #btn-down{ left:60px; top:70px }  
+  #btn-right{ left:120px; top:70px }  /* Apito botão triângulo amarelo no canto inferior direito */
+#whistle-btn {
+position: fixed;
+right: 24px;
+bottom: 24px;
+width: 60px;
+height: 60px;
+background: #ffdc4d;
+clip-path: polygon(0% 100%, 100% 50%, 0% 0%);
+cursor: pointer;
+box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+z-index: 40;
+transition: background 0.3s ease;
+user-select: none;
+border: none;
+}
+#whistle-btn:active {
+background: #e6c843;
+}
+#whistle-cooldown {
+position: absolute;
+left: 0; top: 0; width: 100%; height: 100%;
+background: rgba(0,0,0,0.3);
+clip-path: polygon(0% 100%, 100% 50%, 0% 0%);
+pointer-events: none;
+transform-origin: center bottom;
+transform: scaleY(0);
+transition: transform 0.3s linear;
+z-index: 41;
+}
+</style>
+
+</head>  
+<body>  
+  <div id="ui">  
+    <h2>Vidas: <span id="life-count">2</span></h2>  
+    <h2>Moedas: <span id="coin-count">0</span></h2>  
+  </div>  
+  <div id="message"></div>  
+  <button id="restart-btn">Reiniciar</button>  <canvas id="game"></canvas>
+
+  <div id="controls">  
+    <div class="btn-arrow" id="btn-up">↑</div>  
+    <div class="btn-arrow" id="btn-left">←</div>  
+    <div class="btn-arrow" id="btn-down">↓</div>  
+    <div class="btn-arrow" id="btn-right">→</div>  
+  </div>    <button id="whistle-btn" title="Congelar inimigos (apito)">  
+    <div id="whistle-cooldown"></div>  
+  </button>  <script>  
+(() => {  
+  // --- Setup Canvas ---  
+  const canvas = document.getElementById('game');  
+  const ctx = canvas.getContext('2d');  
+  let WIDTH = window.innerWidth, HEIGHT = window.innerHeight;  
+  canvas.width = WIDTH; canvas.height = HEIGHT;  
+  
+  // UI  
+  const lifeCountElem = document.getElementById('life-count');  
+  const coinCountElem = document.getElementById('coin-count');  
+  const messageElem = document.getElementById('message');  
+  const restartBtn = document.getElementById('restart-btn');  
+  
+  // Apito  
+  const whistleBtn = document.getElementById('whistle-btn');  
+  const whistleCooldownOverlay = document.getElementById('whistle-cooldown');  
+  const WHISTLE_COOLDOWN_MS = 15000; // 15 segundos de cooldown  
+  const WHISTLE_FREEZE_MS = 5000; // congela inimigos por 5 segundos  
+  let whistleAvailable = true;  
+  let whistleCooldownStart = 0;  
+  
+  // Configs  
+  const ITEM_RESPAWN_INTERVAL_MS = 4000; // 4 segundos  
+  const ITEM_MIN_DIST = 500; // distância minima do jogador  
+  const ENEMY_STOP_DISTANCE = 600; // inimigos param de perseguir se > 600px  
+  const PLAYER_MAX_LIVES = 25;  
+  const BEE_HITS_TO_KILL = 3;  
+  const DAMAGE_COOLDOWN_MS = 1000; // 1s cooldown por inimigo  
+  
+  // Cores e tamanhos  
+  const COLORS = {  
+    player: '#d11', // vermelho quadrado jogador  
+    coin: '#ffdc4d', // amarelo moeda  
+    enemyCommon: '#2b6cff', // azul quadrado inimigo comum  
+    enemyMax: '#ff65b2', // rosa quadrado inimigo max  
+    bee: '#ffc34d', // laranja abelha  
+    life: '#2ecc71', // verde  
+    speed: '#8b5cf6', // roxo quadrado velocidade  
+    slowEnemy:'#ff8a3d', // laranja escuro  
+    shield: '#4ce0e6', // ciano escudo  
+    extra:'#00bcd4', // azul raro (aumenta 20%)  
+    invincible: '#888', // cinza invencivel  
+  };  
+  const SIZES = {  
+    player: 36,  
+    coin: 18,  
+    enemyCommon: 36,  
+    enemyMax: 48,  
+    bee: 26,  
+    life: 22,  
+    speed: 22,  
+    slowEnemy: 22,  
+    shield: 26,  
+    extra: 26,  
+    invincible: 28,  
+  };  
+  
+  // Estado do jogo  
+  let gameOver = false;  
+  let deathReason = '';  
+  
+  // Congelamento inimigos  
+  let enemiesFrozen = false;  
+  let freezeTimer = 0;  
+  
+  // Controles (teclado, touch, mouse drag)  
+  const keys = { left:false, right:false, up:false, down:false };  
+  const btnUp = document.getElementById('btn-up');  
+  const btnDown = document.getElementById('btn-down');  
+  const btnLeft = document.getElementById('btn-left');  
+  const btnRight = document.getElementById('btn-right');  
+  
+  function bindBtn(btn, dir) {  
+    btn.addEventListener('pointerdown', e => { keys[dir]=true; e.preventDefault(); });  
+    btn.addEventListener('pointerup', e => { keys[dir]=false; e.preventDefault(); });  
+    btn.addEventListener('pointerleave', e => { keys[dir]=false; e.preventDefault(); });  
+    btn.addEventListener('touchcancel', e => { keys[dir]=false; e.preventDefault(); });  
+  }  
+  bindBtn(btnUp,'up'); bindBtn(btnDown,'down'); bindBtn(btnLeft,'left'); bindBtn(btnRight,'right');  
+  
+  window.addEventListener('keydown', e => {  
+    if(e.key === 'ArrowUp') keys.up = true;  
+    if(e.key === 'ArrowDown') keys.down = true;  
+    if(e.key === 'ArrowLeft') keys.left = true;  
+    if(e.key === 'ArrowRight') keys.right = true;  
+  });  
+  window.addEventListener('keyup', e => {  
+    if(e.key === 'ArrowUp') keys.up = false;  
+    if(e.key === 'ArrowDown') keys.down = false;  
+    if(e.key === 'ArrowLeft') keys.left = false;  
+    if(e.key === 'ArrowRight') keys.right = false;  
+  });  
+  
+  // Mouse drag / pointer control: ao arrastar/clicar no canvas o jogador se move na direção do cursor  
+  let pointerActive = false;  
+  canvas.addEventListener('pointerdown', (e) => { pointerActive = true; handlePointerMove(e); canvas.style.cursor='pointer'; });  
+  canvas.addEventListener('pointerup', (e)=>{ pointerActive = false; resetKeys(); canvas.style.cursor='default'; });  
+  canvas.addEventListener('pointercancel', ()=>{ pointerActive=false; resetKeys(); canvas.style.cursor='default' });  
+  canvas.addEventListener('mouseleave', ()=>{ pointerActive=false; resetKeys(); canvas.style.cursor='default' });  
+  canvas.addEventListener('pointermove', (e) => { if(pointerActive) handlePointerMove(e); });  
+  
+  function resetKeys(){ keys.left=keys.right=keys.up=keys.down=false; }  
+  function handlePointerMove(e){  
+    // calcula direção do centro (player) para o ponteiro  
+    const cx = WIDTH/2, cy = HEIGHT/2;  
+    const dx = e.clientX - cx, dy = e.clientY - cy;  
+    const dead = 10; // zona morta  
+    keys.left = dx < -dead;  
+    keys.right = dx > dead;  
+    keys.up = dy < -dead;  
+    keys.down = dy > dead;  
+  }  
+  
+  // Entidades do mundo (coordenadas absolutas)  
+  const player = {  
+    x: 0, y: 0,  
+    size: SIZES.player,  
+    speed: 3,  
+    maxSpeed: 6,  
+    lives: 2,  
+    coins: 0,  
+    sizeIncrease: 0,  
+    fastTimer: 0,  
+    slowEnemyTimer: 0,  
+    shieldTimer: 0,  
+    invincibleTimer: 0,  
+  };  
+  
+  let coins = []; // {x,y,size}  
+  let items = []; // {x,y,size,type}  
+  let enemies = []; // {x,y,size,type,speed,lastHitTime,hitsOnPlayer,lastDamageTime,hitsOnPlayer}  
+  
+  // utilitários  
+  function randAnglePos(minDist, maxDist) {  
+    const a = Math.random()*Math.PI*2;  
+    const r = minDist + Math.random()*(maxDist-minDist);  
+    return { x: player.x + Math.cos(a)*r, y: player.y + Math.sin(a)*r };  
+  }  
+  function distance(ax,ay,bx,by){ return Math.hypot(ax-bx,ay-by); }  
+  
+  // UI update  
+  function updateUI(){   
+    lifeCountElem.textContent = player.lives;   
+    coinCountElem.textContent = player.coins;   
+  }  
+  
+  // spawn inicial de mundo  
+  function spawnInitial(){  
+    coins = []; items = []; enemies = [];  
+    player.x = 0; player.y = 0;   
+    player.lives = 2; player.coins = 0;   
+    player.sizeIncrease=0;   
+    player.fastTimer=0; player.slowEnemyTimer=0;   
+    player.shieldTimer=0;   
+    player.invincibleTimer=0;  
+    enemiesFrozen = false;  
+    freezeTimer = 0;  
+  
+    // moedas iniciais  
+    for(let i=0;i<50;i++){   
+      const p = randAnglePos(300,1400);   
+      coins.push({x:p.x,y:p.y,size:SIZES.coin});   
+    }  
+    // itens iniciais  
+    for(let i=0;i<8;i++){   
+      const p = randAnglePos(400,1400);   
+      items.push({x:p.x,y:p.y,size:SIZES.life,type:chooseItemType()});   
+    }  
+    // inimigos iniciais: 3 azuis  
+    for(let i=0;i<3;i++){   
+      const p = randAnglePos(600,1200);   
+      enemies.push({x:p.x,y:p.y,size:SIZES.enemyCommon,type:'enemyCommon',speed:1.6,lastHitTime:0});   
+    }  
+    // 1 inimigo rosa (raro)  
+    if(Math.random() < 0.6){   
+      const p = randAnglePos(600,1200);   
+      enemies.push({x:p.x,y:p.y,size:SIZES.enemyMax,type:'enemyMax',speed:1.2,lastHitTime:0});   
+    }  
+    // 1 abelha (raríssima - 20%)  
+    if(Math.random() < 0.2 && !enemies.some(e=>e.type==='bee')){   
+      const p = randAnglePos(700,1400);   
+      enemies.push({x:p.x,y:p.y,size:SIZES.bee,type:'bee',speed:2.6,hitsOnPlayer:0,lastHitTime:0});   
+    }  
+    gameOver=false; deathReason='';   
+    updateUI();  
+  }  
+  
+  // Escolhe tipo de item com probabilidades  
+  function chooseItemType(){  
+    const r = Math.random();  
+    if(r < 0.25) return 'life';           // 25% vida  
+    if(r < 0.40) return 'coinpack';       // 15% pacote de moedas (gera várias)  
+    if(r < 0.55) return 'speed';          // 15% velocidade (roxo)  
+    if(r < 0.70) return 'slowEnemy';      // 15% inimigos lentos (laranja escuro)  
+    if(r < 0.80) return 'shield';         // 10% escudo (ciano)  
+    if(r < 0.90) return 'invincible';     // 10% invencível (cinza)  
+    if(r < 0.98) return 'extra';           // 8% aumenta 20% (azul círculo)  
+    return 'life'; // fallback  
+  }  
+  
+  // Função que cria itens/coins periodicamente (a cada 4s)  
+  function spawnItemsPeriodically(){  
+    // spawn algumas moedas e eventualmente um item  
+    // spawn 1-3 moedas + possível 1 item  
+    const coinCount = 1 + Math.floor(Math.random()*3);  
+    for(let i=0;i<coinCount;i++){  
+      const p = randAnglePos(ITEM_MIN_DIST, 1600);  
+      coins.push({x:p.x,y:p.y,size:SIZES.coin});  
+    }  
+    // 80% chance de spawn de pelo menos 1 item  
+    if(Math.random() < 0.85){  
+      const p = randAnglePos(ITEM_MIN_DIST, 1600);  
+      items.push({x:p.x,y:p.y,size:SIZES.life,type:chooseItemType()});  
+    }  
+  }  
+  
+  // Colisões  
+  function rectsCollide(ax,ay,aw,ah,bx,by,bw,bh){  
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;  
+  }  
+  function circleRectCollide(cx,cy,cr,rx,ry,rw,rh){  
+    const closestX = Math.max(rx, Math.min(cx, rx + rw));  
+    const closestY = Math.max(ry, Math.min(cy, ry + rh));  
+    const dx = cx - closestX, dy = cy - closestY;  
+    return (dx*dx+dy*dy) < (cr*cr);  
+  }  
+  
+  // Update do jogador  
+  function updatePlayer(){  
+    let s = player.speed;  
+    if(player.fastTimer > 0){ s = player.maxSpeed; player.fastTimer--; }  
+    const dx = ((keys.right?1:0)-(keys.left?1:0));  
+    const dy = ((keys.down?1:0)-(keys.up?1:0));  
+    let mx = dx, my = dy;  
+    if(mx !== 0 && my !== 0){ mx *= Math.SQRT1_2; my *= Math.SQRT1_2; }  
+    player.x += mx * s;  
+    player.y += my * s;  
+    // decrement timers  
+    if(player.slowEnemyTimer>0) player.slowEnemyTimer--;  
+    if(player.shieldTimer>0) player.shieldTimer--;  
+    if(player.fastTimer>0) player.fastTimer--;  
+    if(player.invincibleTimer>0) player.invincibleTimer--;  
+  }  
+  
+  // Update inimigos (perseguem se dentro de ENEMY_STOP_DISTANCE)  
+  function updateEnemies(){  
+    if(enemiesFrozen){  
+      freezeTimer--;  
+      if(freezeTimer <= 0){  
+        enemiesFrozen = false;  
+      }  
+      return; // congela inimigos  
+    }  
+    const slow = player.slowEnemyTimer > 0;  
+    enemies.forEach(e=>{  
+      const d = distance(e.x,e.y,player.x,player.y);  
+      if(d > ENEMY_STOP_DISTANCE) return;  
+      let sp = e.speed;  
+      if(slow) sp /= 2;  
+      // normaliza direção  
+      const dirX = (player.x - e.x)/d || 0;  
+      const dirY = (player.y - e.y)/d || 0;  
+      e.x += dirX * sp;  
+      e.y += dirY * sp;  
+    });  
+  }  
+  
+  // Checa colisões (moedas, items e inimigos) e aplica efeitos  
+  function handleCollisions(){  
+    const pSize = player.size + player.sizeIncrease;  
+    const px = player.x - pSize/2, py = player.y - pSize/2;  
+    // moedas  
+   // moedas  
+    coins = coins.filter(coin => {  
+      const cx = coin.x, cy = coin.y, cr = coin.size;  
+      const dist = distance(player.x, player.y, cx, cy);  
+      if(dist < (pSize/2 + cr)){  
+        player.coins++;  
+        updateUI();  
+        return false; // moeda coletada  
+      }  
+      return true;  
+    });  
+  
+    // itens  
+    items = items.filter(item => {  
+      const ix = item.x, iy = item.y, isz = item.size;  
+      const dist = distance(player.x, player.y, ix, iy);  
+      if(dist < (pSize/2 + isz)){  
+        // aplicar efeito do item  
+        switch(item.type){  
+          case 'life':  
+            if(player.lives < PLAYER_MAX_LIVES) player.lives++;  
+            break;  
+          case 'coinpack':  
+            player.coins += 5;  
+            break;  
+          case 'speed':  
+            player.fastTimer = 600; // 10 segundos (60fps)  
+            break;  
+          case 'slowEnemy':  
+            player.slowEnemyTimer = 600;  
+            break;  
+          case 'shield':  
+            player.shieldTimer = 300; // 5 segundos  
+            break;  
+          case 'invincible':  
+            player.invincibleTimer = 300;  
+            break;  
+          case 'extra':  
+            player.sizeIncrease += Math.floor(pSize * 0.2);  
+            break;  
+        }  
+        updateUI();  
+        return false; // item coletado  
+      }  
+      return true;  
+    });  
+  
+    // inimigos  
+    enemies.forEach(e => {  
+      const ex = e.x, ey = e.y, esz = e.size;  
+      const dist = distance(player.x, player.y, ex, ey);  
+      if(dist < (pSize/2 + esz/2)){  
+        const now = Date.now();  
+  
+        if(player.invincibleTimer > 0) return; // invencível não sofre dano  
+  
+        // Proteção escudo  
+        if(player.shieldTimer > 0){  
+          // só remove o escudo e não tira vida  
+          player.shieldTimer = 0;  
+          return;  
+        }  
+  
+        // Checa cooldown dano pra não tirar vida múltiplas vezes rápido  
+        if(!e.lastDamageTime) e.lastDamageTime = 0;  
+        if(now - e.lastDamageTime < DAMAGE_COOLDOWN_MS) return;  
+  
+        // Dano conforme inimigo  
+        switch(e.type){  
+          case 'enemyCommon':  
+            player.lives -= 1;  
+            deathReason = "Você foi morto por inimigo comum.";  
+            break;  
+          case 'enemyMax':  // quadrado rosa  
+            player.lives -= 5;  
+            deathReason = "Você foi morto pelo inimigo MAX (rosa).";  
+            break;  
+          case 'bee':  
+            e.hitsOnPlayer = (e.hitsOnPlayer || 0) + 1;  
+            if(e.hitsOnPlayer >= BEE_HITS_TO_KILL){  
+              player.lives = 0;  
+              deathReason = "Você foi morto por abelha.";  
+            } else {  
+              player.lives -= 1;  
+              deathReason = "Você foi picado pela abelha.";  
+            }  
+            break;  
+        }  
+        e.lastDamageTime = now;  
+        updateUI();  
+      }  
+    });  
+  
+    // Verifica fim de jogo  
+    if(player.lives <= 0 && !gameOver){  
+      gameOver = true;  
+      messageElem.textContent = deathReason || "Você morreu.";  
+      messageElem.style.display = "block";  
+      restartBtn.style.display = "block";  
+    }  
+  }  
+  
+  // Desenha jogador  
+  function drawPlayer(){  
+    const size = player.size + player.sizeIncrease;  
+    ctx.save();  
+    ctx.translate(WIDTH/2, HEIGHT/2);  
+  
+    // invencivel cinza  
+    if(player.invincibleTimer > 0){  
+      ctx.fillStyle = COLORS.invincible;  
+      ctx.shadowColor = '#999';  
+      ctx.shadowBlur = 15;  
+      ctx.fillRect(-size/2, -size/2, size, size);  
+    }  
+  
+    // quadrado vermelho jogador  
+    ctx.fillStyle = COLORS.player;  
+    ctx.shadowColor = '#c00';  
+    ctx.shadowBlur = 15;  
+    ctx.fillRect(-size/2, -size/2, size, size);  
+  
+    // escudo (ciano) efeito círculo transparente  
+    if(player.shieldTimer > 0){  
+      ctx.beginPath();  
+      ctx.strokeStyle = COLORS.shield;  
+      ctx.lineWidth = 5;  
+      ctx.shadowColor = COLORS.shield;  
+      ctx.shadowBlur = 15;  
+      ctx.arc(0, 0, size * 0.75, 0, Math.PI*2);  
+      ctx.stroke();  
+    }  
+  
+    ctx.restore();  
+  }  
+  
+  // Desenha moedas  
+  function drawCoins(){  
+    coins.forEach(c => {  
+      const dx = c.x - player.x + WIDTH/2;  
+      const dy = c.y - player.y + HEIGHT/2;  
+      ctx.fillStyle = COLORS.coin;  
+      ctx.beginPath();  
+      ctx.arc(dx, dy, c.size, 0, Math.PI*2);  
+      ctx.fill();  
+    });  
+  }  
+  
+  // Desenha itens  
+  function drawItems(){  
+    items.forEach(i => {  
+      const dx = i.x - player.x + WIDTH/2;  
+      const dy = i.y - player.y + HEIGHT/2;  
+  
+      switch(i.type){  
+        case 'life':  
+          ctx.fillStyle = COLORS.life;  
+          ctx.fillRect(dx - i.size/2, dy - i.size/2, i.size, i.size);  
+          break;  
+        case 'coinpack':  
+          ctx.fillStyle = COLORS.coin;  
+          ctx.beginPath();  
+          ctx.arc(dx, dy, i.size * 1.2, 0, Math.PI*2);  
+          ctx.fill();  
+          break;  
+        case 'speed':  
+          ctx.fillStyle = COLORS.speed;  
+          ctx.fillRect(dx - i.size/2, dy - i.size/2, i.size, i.size);  
+          break;  
+        case 'slowEnemy':  
+          ctx.fillStyle = COLORS.slowEnemy;  
+          ctx.fillRect(dx - i.size/2, dy - i.size/2, i.size, i.size);  
+          break;  
+        case 'shield':  
+          ctx.fillStyle = COLORS.shield;  
+          ctx.fillRect(dx - i.size/2, dy - i.size/2, i.size, i.size);  
+          break;  
+        case 'invincible':  
+          ctx.fillStyle = COLORS.invincible;  
+          ctx.fillRect(dx - i.size/2, dy - i.size/2, i.size, i.size);  
+          break;  
+        case 'extra':  
+          ctx.fillStyle = COLORS.extra;  
+          ctx.beginPath();  
+          ctx.arc(dx, dy, i.size, 0, Math.PI*2);  
+          ctx.fill();  
+          break;  
+      }  
+    });  
+  }  
+  
+  // Desenha inimigos  
+  function drawEnemies(){  
+    enemies.forEach(e=>{  
+      const dx = e.x - player.x + WIDTH/2;  
+      const dy = e.y - player.y + HEIGHT/2;  
+  
+      switch(e.type){  
+        case 'enemyCommon':  
+          ctx.fillStyle = COLORS.enemyCommon;  
+          ctx.fillRect(dx - e.size/2, dy - e.size/2, e.size, e.size);  
+          break;  
+        case 'enemyMax':  
+          ctx.fillStyle = COLORS.enemyMax;  
+          ctx.fillRect(dx - e.size/2, dy - e.size/2, e.size, e.size);  
+          break;  
+        case 'bee':  
+          // abelha: desenhar quadrado laranja menor e circular "asas"  
+          ctx.fillStyle = COLORS.bee;  
+          ctx.fillRect(dx - e.size/2, dy - e.size/2, e.size, e.size);  
+          ctx.beginPath();  
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';  
+          ctx.ellipse(dx - e.size/4, dy - e.size/4, e.size/5, e.size/8, 0, 0, Math.PI*2);  
+          ctx.ellipse(dx + e.size/4, dy - e.size/4, e.size/5, e.size/8, 0, 0, Math.PI*2);  
+          ctx.fill();  
+          break;  
+      }  
+    });  
+  }  
+  
+  // Desenha fundo infinito (grade simples)  
+  function drawBackground(){  
+    const gridSize = 100;  
+    ctx.fillStyle = '#e5f5e0';  
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);  
+    ctx.strokeStyle = '#c7e2c9';  
+    ctx.lineWidth = 1;  
+  
+    const offsetX = player.x % gridSize;  
+    const offsetY = player.y % gridSize;  
+  
+    for(let x = -offsetX; x < WIDTH; x += gridSize){  
+      ctx.beginPath();  
+      ctx.moveTo(x, 0);  
+      ctx.lineTo(x, HEIGHT);  
+      ctx.stroke();  
+    }  
+    for(let y = -offsetY; y < HEIGHT; y += gridSize){  
+      ctx.beginPath();  
+      ctx.moveTo(0, y);  
+      ctx.lineTo(WIDTH, y);  
+      ctx.stroke();  
+    }  
+  }  
+  
+  // Loop principal  
+  function gameLoop(){  
+    if(gameOver){  
+      requestAnimationFrame(gameLoop);  
+      return;  
+    }  
+  
+    updatePlayer();  
+    updateEnemies();  
+    handleCollisions();  
+  
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);  
+  
+    drawBackground();  
+    drawCoins();  
+    drawItems();  
+    drawEnemies();  
+    drawPlayer();  
+  
+    requestAnimationFrame(gameLoop);  
+  }  
+  
+  // Apito freeze controle  
+  whistleBtn.addEventListener('click', () => {  
+    if(!whistleAvailable) return;  
+    enemiesFrozen = true;  
+    freezeTimer = WHISTLE_FREEZE_MS / (1000/60); // frames (5 segundos)  
+    whistleAvailable = false;  
+    whistleCooldownStart = Date.now();  
+  
+    // animação cooldown  
+    whistleCooldownOverlay.style.transform = 'scaleY(1)';  
+  
+    // congela inimigos e inicia cooldown  
+    setTimeout(() => {  
+      enemiesFrozen = false;  
+    }, WHISTLE_FREEZE_MS);  
+  
+    // cooldown do botão  
+    const cooldownInterval = setInterval(() => {  
+      const elapsed = Date.now() - whistleCooldownStart;  
+      if(elapsed >= WHISTLE_COOLDOWN_MS){  
+        whistleAvailable = true;  
+        whistleCooldownOverlay.style.transform = 'scaleY(0)';  
+        clearInterval(cooldownInterval);  
+      } else {  
+        const ratio = 1 - elapsed / WHISTLE_COOLDOWN_MS;  
+        whistleCooldownOverlay.style.transform = `scaleY(${ratio})`;  
+      }  
+    }, 100);  
+  });  
+  
+  // Reiniciar jogo  
+  restartBtn.addEventListener('click', () => {  
+    spawnInitial();  
+    messageElem.style.display = 'none';  
+    restartBtn.style.display = 'none';  
+    gameOver = false;  
+  });  
+  
+  // Redimensiona canvas ao mudar tamanho da tela  
+  window.addEventListener('resize', () => {  
+    WIDTH = window.innerWidth; HEIGHT = window.innerHeight;  
+    canvas.width = WIDTH; canvas.height = HEIGHT;  
+  });  
+  
+  // Spawn periódico de itens e moedas  
+  setInterval(() => {  
+    if(!gameOver) spawnItemsPeriodically();  
+  }, ITEM_RESPAWN_INTERVAL_MS);  
+  
+  // Começa o jogo  
+  spawnInitial();  
+  gameLoop();  
+  
+})();  
+</script>  </body>  
+</html>
