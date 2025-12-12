@@ -1,1 +1,1 @@
-oi esse que fiz é meu primeiro jogo aos 14 anos , ele é um jogo onde tu movimenta um quadrado vermelho, ele com certeza tem bug na loja mas é oq tem
+oi esse que fiz é meu primeiro jogo aos 14 anos , ele é um jogo onde tu movimenta um quadrado vermelho, ele é um jogo q o objetivo é vc ficar rico de moedas, esse jogo roda melhor no celular. 
