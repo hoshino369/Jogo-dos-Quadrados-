@@ -9,18 +9,32 @@ html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#fff;
 canvas { display:block; background:#fff; }
 #ui { position:fixed; left:12px; top:10px; z-index:20; font-weight:bold; color:#222; }
 #ui h2 { margin:0 12px 0 0; display:inline; font-size:1.6em; font-weight:bold; }
-#message { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:30; background:rgba(255,255,255,0.96); padding:18px 26px; border-radius:12px; font-size:22px; color:#b00; display:none; max-width:90vw; text-align:center; }
-#restart-btn { position:fixed; left:50%; top:calc(50% + 80px); transform:translateX(-50%); z-index:31; padding:16px 26px; border-radius:12px; border:0; background:#222; color:#fff; font-size:22px; cursor:pointer; display:none; }
-#controls { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); width:180px; height:140px; z-index:25; }
-.btn-arrow { position:absolute; width:60px; height:60px; border-radius:12px; background:#ddd; box-shadow:0 2px 6px rgba(0,0,0,.15); text-align:center; line-height:60px; font-size:30px; cursor:pointer; }
+#message { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+  z-index:30; background:rgba(255,255,255,0.96); padding:18px 26px; border-radius:12px;
+  font-size:22px; color:#b00; display:none; max-width:90vw; text-align:center; }
+#restart-btn { position:fixed; left:50%; top:calc(50% + 80px); transform:translateX(-50%);
+  z-index:31; padding:16px 26px; border-radius:12px; border:0; background:#222; color:#fff; font-size:22px;
+  cursor:pointer; display:none; }
+#controls { position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
+  width:180px; height:140px; z-index:25; }
+.btn-arrow { position:absolute; width:60px; height:60px; border-radius:12px;
+  background:#ddd; box-shadow:0 2px 6px rgba(0,0,0,.15); text-align:center; line-height:60px; font-size:30px; cursor:pointer; }
 .btn-arrow:active { background:#bbb; }
 #btn-up{ left:60px; top:0 }
 #btn-left{ left:0; top:70px }
 #btn-down{ left:60px; top:70px }
 #btn-right{ left:120px; top:70px }
-#whistle-btn { position: fixed; right: 24px; bottom: 24px; width: 60px; height: 60px; background: #ffdc4d; clip-path: polygon(0% 100%, 100% 50%, 0% 0%); cursor:pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); z-index:40; transition: background 0.3s ease; border:none; user-select:none; }
+#whistle-btn {
+  position: fixed; right: 24px; bottom: 24px; width: 60px; height: 60px;
+  background: #ffdc4d; clip-path: polygon(0% 100%, 100% 50%, 0% 0%); cursor:pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2); z-index:40; transition: background 0.3s ease; border:none; user-select:none;
+}
 #whistle-btn:active { background:#e6c843; }
-#whistle-cooldown { position:absolute; left:0; top:0; width:100%; height:100%; background: rgba(0,0,0,0.3); clip-path: polygon(0% 100%, 100% 50%, 0% 0%); pointer-events:none; transform-origin:center bottom; transform:scaleY(0); transition:transform 0.3s linear; z-index:41; }
+#whistle-cooldown {
+  position:absolute; left:0; top:0; width:100%; height:100%;
+  background: rgba(0,0,0,0.3); clip-path: polygon(0% 100%, 100% 50%, 0% 0%);
+  pointer-events:none; transform-origin:center bottom; transform:scaleY(0); transition:transform 0.3s linear; z-index:41;
+}
 </style>
 </head>
 <body>
@@ -48,7 +62,6 @@ const ctx = canvas.getContext('2d');
 let WIDTH = window.innerWidth, HEIGHT = window.innerHeight;
 canvas.width = WIDTH; canvas.height = HEIGHT;
 
-// UI
 const lifeCountElem = document.getElementById('life-count');
 const coinCountElem = document.getElementById('coin-count');
 const ammoCountElem = document.getElementById('ammo-count');
@@ -57,43 +70,31 @@ const restartBtn = document.getElementById('restart-btn');
 const whistleBtn = document.getElementById('whistle-btn');
 const whistleCooldownOverlay = document.getElementById('whistle-cooldown');
 
-// Config
 const ITEM_RESPAWN_INTERVAL_MS = 4000;
 const ITEM_MIN_DIST = 500;
-const ENEMY_STOP_DISTANCE = 1500; // agora inimigos perseguem até 1500px
+const ENEMY_STOP_DISTANCE = 1500;
 const PLAYER_MAX_LIVES = 25;
 const DAMAGE_COOLDOWN_MS = 1000;
 const WHISTLE_COOLDOWN_MS = 15000;
 const WHISTLE_FREEZE_MS = 5000;
 
-// Colors
 const COLORS = {
   player:'#d11', coin:'#ffdc4d', enemyCommon:'#2b6cff', enemyMax:'#ff65b2',
   bee:'#ffc34d', life:'#2ecc71', speed:'#8b5cf6', slowEnemy:'#ff8a3d',
   shield:'#4ce0e6', extra:'#00bcd4', invincible:'#888',
   gray:'#aaa', purple:'#8b5cf6', green:'#2ecc71', orange:'#ff8a3d'
 };
-const SIZES = {
-  player:36, coin:18, enemyCommon:36, enemyMax:48, bee:26,
-  life:22, speed:22, slowEnemy:22, shield:26, extra:26, invincible:28, gun:22
-};
+const SIZES = {player:36, coin:18, enemyCommon:36, enemyMax:48, bee:26, life:22, speed:22, slowEnemy:22, shield:26, extra:26, invincible:28, gun:22};
 
-// Game State
 let gameOver=false, deathReason='', enemiesFrozen=false, freezeTimer=0;
 let keys={up:false,down:false,left:false,right:false};
 let pointerActive=false;
 
-// Player
-const player={
-  x:0,y:0,size:SIZES.player,speed:3,maxSpeed:6,lives:2,coins:0,
-  sizeIncrease:0, fastTimer:0, slowEnemyTimer:0, shieldTimer:0,
-  invincibleTimer:0, hasGun:false, ammo:0
-};
+const player={x:0,y:0,size:SIZES.player,speed:3,maxSpeed:6,lives:2,coins:0,sizeIncrease:0,
+  fastTimer:0, slowEnemyTimer:0, shieldTimer:0, invincibleTimer:0, hasGun:false, ammo:0};
 
-// Arrays
 let coins=[], items=[], enemies=[];
 
-// Utility
 function randAnglePos(minDist,maxDist){
   const a=Math.random()*Math.PI*2;
   const r=minDist+Math.random()*(maxDist-minDist);
@@ -101,14 +102,12 @@ function randAnglePos(minDist,maxDist){
 }
 function distance(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by);}
 
-// UI Update
 function updateUI(){
   lifeCountElem.textContent = player.lives;
   coinCountElem.textContent = player.coins;
   ammoCountElem.textContent = player.hasGun ? `Munição: ${player.ammo}` : 'Munição: 0';
 }
 
-// Spawn Initial
 function spawnInitial(){
   coins=[]; items=[]; enemies=[];
   player.x=0; player.y=0; player.lives=2; player.coins=0;
@@ -116,47 +115,19 @@ function spawnInitial(){
   player.shieldTimer=0; player.invincibleTimer=0; player.hasGun=false; player.ammo=0;
   enemiesFrozen=false; freezeTimer=0;
 
-  // Coins
-  for(let i=0;i<50;i++){
-    const p=randAnglePos(300,1400);
-    coins.push({x:p.x,y:p.y,size:SIZES.coin});
-  }
+  for(let i=0;i<50;i++){ const p=randAnglePos(300,1400); coins.push({x:p.x,y:p.y,size:SIZES.coin}); }
+  for(let i=0;i<8;i++){ const p=randAnglePos(400,1400); items.push({x:p.x,y:p.y,size:SIZES.life,type:chooseItemType()}); }
 
-  // Items
-  for(let i=0;i<8;i++){
-    const p=randAnglePos(400,1400);
-    items.push({x:p.x,y:p.y,size:SIZES.life,type:chooseItemType()});
-  }
+  for(let i=0;i<8;i++){ const p=randAnglePos(600,1200); enemies.push({x:p.x,y:p.y,size:SIZES.enemyCommon,type:'enemyCommon',speed:1.6,lastDamageTime:0}); }
+  if(Math.random()<0.6){ const p=randAnglePos(600,1200); enemies.push({x:p.x,y:p.y,size:SIZES.enemyMax,type:'enemyMax',speed:1.2,lastDamageTime:0}); }
+  if(Math.random()<0.2 && !enemies.some(e=>e.type==='bee')){ const p=randAnglePos(700,1400); enemies.push({x:p.x,y:p.y,size:SIZES.bee,type:'bee',speed:2.6,hitsOnPlayer:0,lastDamageTime:0,hitsTaken:0}); }
 
-  // Enemies: comuns
-  for(let i=0;i<8;i++){
-    const p=randAnglePos(600,1200);
-    enemies.push({x:p.x,y:p.y,size:SIZES.enemyCommon,type:'enemyCommon',speed:1.6,lastDamageTime:0});
-  }
-
-  // Inimigo rosa max
-  if(Math.random()<0.6){
-    const p=randAnglePos(600,1200);
-    enemies.push({x:p.x,y:p.y,size:SIZES.enemyMax,type:'enemyMax',speed:1.2,lastDamageTime:0});
-  }
-
-  // Abelhas
-  if(Math.random()<0.2 && !enemies.some(e=>e.type==='bee')){
-    const p=randAnglePos(700,1400);
-    enemies.push({x:p.x,y:p.y,size:SIZES.bee,type:'bee',speed:2.6,hitsOnPlayer:0,lastDamageTime:0,hitsTaken:0});
-  }
-
-  // Quadrados especiais: cinza, roxo, verde, laranja
   const specialColors=['gray','purple','green','orange'];
-  specialColors.forEach(color=>{
-    const p=randAnglePos(600,1400);
-    enemies.push({x:p.x,y:p.y,size:SIZES.enemyCommon,type:color,speed:1.5,lastDamageTime:0});
-  });
+  specialColors.forEach(color=>{ const p=randAnglePos(600,1400); enemies.push({x:p.x,y:p.y,size:SIZES.enemyCommon,type:color,speed:1.5,lastDamageTime:0}); });
 
   gameOver=false; deathReason=''; updateUI();
 }
 
-// Escolhe Item
 function chooseItemType(){
   const r=Math.random();
   if(r<0.25) return 'life';
@@ -169,60 +140,30 @@ function chooseItemType(){
   return 'life';
 }
 
-// Spawn Items Periodically
 function spawnItemsPeriodically(){
   const coinCount=1+Math.floor(Math.random()*3);
-  for(let i=0;i<coinCount;i++){
-    const p=randAnglePos(ITEM_MIN_DIST,1600);
-    coins.push({x:p.x,y:p.y,size:SIZES.coin});
-  }
-  if(Math.random()<0.85){
-    const p=randAnglePos(ITEM_MIN_DIST,1600);
-    items.push({x:p.x,y:p.y,size:SIZES.life,type:chooseItemType()});
-  }
-
-  // Chance de spawn AK47
-  if(!player.hasGun && Math.random()<0.6){
-    const p=randAnglePos(ITEM_MIN_DIST,1600);
-    items.push({x:p.x,y:p.y,size:SIZES.gun,type:'gun'});
-  }
+  for(let i=0;i<coinCount;i++){ const p=randAnglePos(ITEM_MIN_DIST,1600); coins.push({x:p.x,y:p.y,size:SIZES.coin}); }
+  if(Math.random()<0.85){ const p=randAnglePos(ITEM_MIN_DIST,1600); items.push({x:p.x,y:p.y,size:SIZES.life,type:chooseItemType()}); }
+  if(!player.hasGun && Math.random()<0.6){ const p=randAnglePos(ITEM_MIN_DIST,1600); items.push({x:p.x,y:p.y,size:SIZES.gun,type:'gun'}); }
 }
 
-// Colisões
 function handleCollisions(){
-  const pSize=Math.min(player.size+player.sizeIncrease, WIDTH/2, HEIGHT/2);
-  const px=player.x-pSize/2, py=player.y-pSize/2;
-
-  // Coins
-  coins=coins.filter(coin=>{
-    if(distance(player.x,player.y,coin.x,coin.y)<pSize/2+coin.size){
-      player.coins++;
-      updateUI();
-      return false;
+  const pSize=player.size+player.sizeIncrease;
+  coins=coins.filter(coin=>{ if(distance(player.x,player.y,coin.x,coin.y)<pSize/2+coin.size){ player.coins++; updateUI(); return false; } return true; });
+  items=items.filter(item=>{ if(distance(player.x,player.y,item.x,item.y)<pSize/2+item.size){ 
+    switch(item.type){
+      case 'life': if(player.lives<PLAYER_MAX_LIVES) player.lives++; break;
+      case 'coinpack': player.coins+=5; break;
+      case 'speed': player.fastTimer=600; break;
+      case 'slowEnemy': player.slowEnemyTimer=600; break;
+      case 'shield': player.shieldTimer=300; break;
+      case 'invincible': player.invincibleTimer=300; break;
+      case 'extra': player.sizeIncrease+=Math.floor(pSize*0.2); break;
+      case 'gun': player.hasGun=true; player.ammo=10; break;
     }
-    return true;
+    updateUI(); return false; } return true; 
   });
 
-  // Items
-  items=items.filter(item=>{
-    if(distance(player.x,player.y,item.x,item.y)<pSize/2+item.size){
-      switch(item.type){
-        case 'life': if(player.lives<PLAYER_MAX_LIVES) player.lives++; break;
-        case 'coinpack': player.coins+=5; break;
-        case 'speed': player.fastTimer=600; break;
-        case 'slowEnemy': player.slowEnemyTimer=600; break;
-        case 'shield': player.shieldTimer=300; break;
-        case 'invincible': player.invincibleTimer=300; break;
-        case 'extra': player.sizeIncrease+=Math.floor(pSize*0.2); break;
-        case 'gun': player.hasGun=true; player.ammo+=10; break;
-      }
-      updateUI();
-      return false;
-    }
-    return true;
-  });
-
-  // Enemy collisions
   enemies.forEach(e=>{
     const dist=distance(player.x,player.y,e.x,e.y);
     const esz=e.size;
@@ -255,10 +196,9 @@ function handleCollisions(){
   }
 }
 
-// Update Player
 function updatePlayer(){
   let s=player.speed;
-  if(player.fastTimer>0){ s=Math.min(player.maxSpeed, s); player.fastTimer--; }
+  if(player.fastTimer>0){ s=player.maxSpeed; player.fastTimer--; }
   const dx=(keys.right?1:0)-(keys.left?1:0);
   const dy=(keys.down?1:0)-(keys.up?1:0);
   let mx=dx, my=dy;
@@ -270,34 +210,66 @@ function updatePlayer(){
   if(player.invincibleTimer>0) player.invincibleTimer--;
 }
 
-// Update Enemies
 function updateEnemies(){
   if(enemiesFrozen){ freezeTimer--; if(freezeTimer<=0) enemiesFrozen=false; return; }
   const slow=player.slowEnemyTimer>0;
-  enemies.forEach(e=>{
+  enemies.forEach((e,i)=>{
     const d=distance(e.x,e.y,player.x,player.y);
     if(d>ENEMY_STOP_DISTANCE) return;
-    let sp=e.speed;
-    if(slow) sp/=2;
+    let sp=e.speed; if(slow) sp/=2;
     const dirX=(player.x-e.x)/d||0;
     const dirY=(player.y-e.y)/d||0;
     e.x+=dirX*sp; e.y+=dirY*sp;
+
+    // --- Separação entre inimigos ---
+    enemies.forEach((other,j)=>{
+      if(i===j) return;
+      const dx = e.x - other.x;
+      const dy = e.y - other.y;
+      const dist = Math.hypot(dx,dy);
+      const minDist = (e.size + other.size)/2 + 4;
+      if(dist<minDist && dist>0){
+        const push = (minDist - dist)/2;
+        e.x += dx/dist * push; e.y += dy/dist * push;
+        other.x -= dx/dist * push; other.y -= dy/dist * push;
+      }
+    });
   });
 }
 
-// Draw Functions
-function drawBackground(){const gridSize=100; ctx.fillStyle='#e5f5e0'; ctx.fillRect(0,0,WIDTH,HEIGHT); ctx.strokeStyle='#c7e2c9'; ctx.lineWidth=1; const offsetX=player.x%gridSize; const offsetY=player.y%gridSize; for(let x=-offsetX;x<WIDTH;x+=gridSize){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,HEIGHT); ctx.stroke(); } for(let y=-offsetY;y<HEIGHT;y+=gridSize){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(WIDTH,y); ctx.stroke(); } }
-function drawPlayer(){const size=Math.min(player.size+player.sizeIncrease, WIDTH/2, HEIGHT/2); ctx.save(); ctx.translate(WIDTH/2, HEIGHT/2); if(player.invincibleTimer>0){ ctx.fillStyle=COLORS.invincible; ctx.fillRect(-size/2,-size/2,size,size); } ctx.fillStyle=COLORS.player; ctx.fillRect(-size/2,-size/2,size,size); if(player.shieldTimer>0){ ctx.beginPath(); ctx.strokeStyle=COLORS.shield; ctx.lineWidth=5; ctx.arc(0,0,size*0.75,0,Math.PI*2); ctx.stroke(); } ctx.restore(); }
-function drawCoins(){ coins.forEach(c=>{ const dx=c.x-player.x+WIDTH/2; const dy=c.y-player.y+HEIGHT/2; ctx.fillStyle=COLORS.coin; ctx.beginPath(); ctx.arc(dx,dy,c.size,0,Math.PI*2); ctx.fill(); }); }
-function drawItems(){ items.forEach(i=>{ const dx=i.x-player.x+WIDTH/2; const dy=i.y-player.y+HEIGHT/2; switch(i.type){ case 'life': ctx.fillStyle=COLORS.life; ctx.fillRect(dx-i.size/2,dy-i.size/2,i.size,i.size); break; case 'coinpack': ctx.fillStyle=COLORS.coin; ctx.beginPath(); ctx.arc(dx,dy,i.size*1.2,0,Math.PI*2); ctx.fill(); break; case 'speed': ctx.fillStyle=COLORS.speed; ctx.fillRect(dx-i.size/2,dy-i.size/2,i.size,i.size); break;
+function drawBackground(){
+  const gridSize=100;
+  ctx.fillStyle='#e5f5e0';
+  ctx.fillRect(0,0,WIDTH,HEIGHT);
+  ctx.strokeStyle='#c7e2c9'; ctx.lineWidth=1;
+  const offsetX=player.x%gridSize, offsetY=player.y%gridSize;
+  for(let x=-offsetX;x<WIDTH;x+=gridSize){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,HEIGHT); ctx.stroke(); }
+  for(let y=-offsetY;y<HEIGHT;y+=gridSize){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(WIDTH,y); ctx.stroke(); }
+}
+
+function drawPlayer(){
+  const size=player.size+player.sizeIncrease;
+  ctx.save(); ctx.translate(WIDTH/2, HEIGHT/2);
+  ctx.fillStyle=COLORS.player; ctx.fillRect(-size/2,-size/2,size,size);
+  if(player.shieldTimer>0){ ctx.beginPath(); ctx.strokeStyle=COLORS.shield; ctx.lineWidth=5; ctx.arc(0,0,size*0.75,0,Math.PI*2); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawCoins(){ coins.forEach(c=>{ const dx=c.x-player.x+WIDTH/2; const dy=c.y-player.y+HEIGHT/2;
+  ctx.fillStyle=COLORS.coin; ctx.beginPath(); ctx.arc(dx,dy,c.size,0,Math.PI*2); ctx.fill(); }); }
+
+function drawItems(){ items.forEach(i=>{ const dx=i.x-player.x+WIDTH/2; const dy=i.y-player.y+HEIGHT/2;
+  switch(i.type){
+    case 'life': ctx.fillStyle=COLORS.life; ctx.fillRect(dx-i.size/2,dy-i.size/2,i.size,i.size); break;
+    case 'coinpack': ctx.fillStyle=COLORS.coin; ctx.beginPath(); ctx.arc(dx,dy,i.size*1.2,0,Math.PI*2); ctx.fill(); break;
+    case 'speed': ctx.fillStyle=COLORS.speed; ctx.fillRect(dx-i.size/2,dy-i.size/2,i.size,i.size); break;
     case 'slowEnemy': ctx.fillStyle=COLORS.slowEnemy; ctx.fillRect(dx-i.size/2,dy-i.size/2,i.size,i.size); break;
     case 'shield': ctx.fillStyle=COLORS.shield; ctx.fillRect(dx-i.size/2,dy-i.size/2,i.size,i.size); break;
     case 'invincible': ctx.fillStyle=COLORS.invincible; ctx.fillRect(dx-i.size/2,dy-i.size/2,i.size,i.size); break;
     case 'extra': ctx.fillStyle=COLORS.extra; ctx.beginPath(); ctx.arc(dx,dy,i.size,0,Math.PI*2); ctx.fill(); break;
-    case 'gun': ctx.fillStyle='#222'; ctx.fillRect(dx-i.size/2,dy-i.size/2,i.size,i.size); break;
+    case 'gun': ctx.fillStyle='#222'; ctx.fillRect(dx-i.size/2, dy-i.size/2, i.size, i.size); break;
   }
-}); 
-}
+}); }
 
 function drawEnemies(){
   enemies.forEach(e=>{
@@ -322,7 +294,10 @@ function drawEnemies(){
         ctx.ellipse(dx + e.size/4, dy - e.size/4, e.size/5, e.size/8, 0, 0, Math.PI*2);
         ctx.fill();
         break;
-      case 'gray': case 'purple': case 'green': case 'orange':
+      case 'gray':
+      case 'purple':
+      case 'green':
+      case 'orange':
         ctx.fillStyle = COLORS[e.type];
         ctx.fillRect(dx - e.size/2, dy - e.size/2, e.size, e.size);
         break;
@@ -371,12 +346,13 @@ document.getElementById('btn-left').addEventListener('touchend',()=>keys.left=fa
 document.getElementById('btn-right').addEventListener('touchstart',()=>keys.right=true);
 document.getElementById('btn-right').addEventListener('touchend',()=>keys.right=false);
 
-// Whistle (freeze enemies)
+// --- Whistle (freeze enemies) ---
 whistleBtn.addEventListener('click', () => {
   if(enemiesFrozen) return;
   enemiesFrozen=true;
   freezeTimer = WHISTLE_FREEZE_MS / (1000/60);
   whistleCooldownOverlay.style.transform='scaleY(1)';
+
   setTimeout(()=>{ enemiesFrozen=false; }, WHISTLE_FREEZE_MS);
 
   const start=Date.now();
@@ -425,16 +401,16 @@ canvas.addEventListener('click', e=>{
   }
 });
 
-// Resize
+// --- Resize ---
 window.addEventListener('resize', ()=>{
   WIDTH=window.innerWidth; HEIGHT=window.innerHeight;
   canvas.width=WIDTH; canvas.height=HEIGHT;
 });
 
-// Spawn periodic items/coins
+// --- Spawn periodic items/coins ---
 setInterval(()=>{ if(!gameOver) spawnItemsPeriodically(); }, ITEM_RESPAWN_INTERVAL_MS);
 
-// Start
+// --- Start ---
 spawnInitial();
 gameLoop();
 
